@@ -35,8 +35,8 @@ A full-featured, production-quality C library for the BMP180 barometric pressure
 
 | Board | Status |
 |---|---|
-| Raspberry Pi Pico (RP2040) | ✅ Fully supported |
-| Raspberry Pi Pico 2 (RP2350) | ✅ Fully supported |
+| Raspberry Pi Pico (RP2040) | Fully supported |
+| Raspberry Pi Pico 2 (RP2350) | Fully supported |
 
 The library uses only `hardware_i2c`, `pico_stdlib`, and `pico_sync` — all of which are identical across RP2040 and RP2350. No board-specific code exists in this library. Set `PICO_BOARD` in your own project's CMakeLists to target the correct board.
 
@@ -44,7 +44,7 @@ The library uses only `hardware_i2c`, `pico_stdlib`, and `pico_sync` — all of 
 
 ## Wiring
 
-> ⚠️ The BMP180 runs on **3.3V only**. Connecting VCC to 5V will permanently damage the chip.
+>  The BMP180 runs on **3.3V only**. Connecting VCC to 5V will permanently damage the chip.
 
 | BMP180 Pin | Pico Pin | Notes |
 |---|---|---|
