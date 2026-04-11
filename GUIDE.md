@@ -35,7 +35,7 @@ The BMP180 communicates over **I2C** — a two-wire protocol that lets the Pico 
 | SDA | Pico Pin 6 (GP4) | Data line |
 | SCL | Pico Pin 7 (GP5) | Clock line |
 
-> ⚠️ **The BMP180 will be permanently destroyed if you connect VCC to 5V.** Always use the 3.3V pin.
+>  **The BMP180 will be permanently damaged if you connect VCC to 5V.** Always use the 3.3V pin.
 
 SDA and SCL are the two I2C wires. SDA carries the actual data bytes. SCL is a clock signal that tells the sensor when to read each bit. The Pico drives both.
 
