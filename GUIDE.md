@@ -1,10 +1,10 @@
-# Beginner's Guide — pico-bmp180
+# Guide — pico-bmp180-advanced-C
 
-This guide walks you from zero to a working BMP180 setup, explaining every concept along the way. No prior sensor experience needed — just basic C knowledge.
+This guide is included to serve the purpose of getting a working BMP180 setup
 
 ---
 
-## What Is the BMP180?
+## The BMP180:
 
 The BMP180 is a small sensor made by Bosch that measures two things:
 
@@ -15,18 +15,18 @@ From pressure and a reference sea level value, you can also derive **altitude** 
 
 ---
 
-## What You Need
+## Required:
 
 - Raspberry Pi Pico or Pico 2
-- BMP180 breakout module (the blue PCB with the tiny black chip)
+- BMP180 breakout module
 - 4 jumper wires
 - Breadboard (optional but convenient)
 
 ---
 
-## Step 1 — Wiring
+## 1. Wiring
 
-The BMP180 communicates over **I2C** — a two-wire protocol that lets the Pico talk to the sensor by sending and receiving digital signals. Your BMP180 module has four pins:
+The BMP180 communicates over **I2C**.
 
 | BMP180 Label | Where to connect | Why |
 |---|---|---|
@@ -35,18 +35,16 @@ The BMP180 communicates over **I2C** — a two-wire protocol that lets the Pico 
 | SDA | Pico Pin 6 (GP4) | Data line |
 | SCL | Pico Pin 7 (GP5) | Clock line |
 
->  **The BMP180 will be permanently damaged if you connect VCC to 5V.** Always use the 3.3V pin.
-
-SDA and SCL are the two I2C wires. SDA carries the actual data bytes. SCL is a clock signal that tells the sensor when to read each bit. The Pico drives both.
+>  **The BMP180 will be permanently damaged if 5V is supplied to it.** Always use the 3.3V pin or a 3.3V voltage regulator
 
 ---
 
-## Step 2 — Add the Library to Your Project
+## 2. Adding the Library to A Project
 
-Copy these four files into your project folder alongside your `main.c`:
+Copy these four files into the project folder alongside `main.c`:
 
 ```
-your_project/
+my_project/
 ├── main.c
 ├── bmp180.h
 ├── bmp180.c
@@ -55,7 +53,7 @@ your_project/
 └── CMakeLists.txt
 ```
 
-In your `CMakeLists.txt`, add `bmp180.c` to your executable and link the required libraries:
+In `CMakeLists.txt`, add `bmp180.c` to executable and link the required libraries:
 
 ```cmake
 add_executable(my_project
@@ -74,9 +72,9 @@ target_link_libraries(my_project
 
 ---
 
-## Step 3 — Your First Program
+## 3. Demo Program
 
-Here is the simplest possible program. Read it line by line — every part is explained below.
+Demo program:
 
 ```c
 #include <stdio.h>
@@ -127,7 +125,7 @@ int main() {
 
 ---
 
-## Line-by-Line Explanation
+## Explanation
 
 **`bmp180_t sensor;`**
 This declares a *device handle* — a struct that holds everything about your sensor: its calibration data, current settings, and internal state. You pass a pointer to this in every library call. Having it as a separate struct means you could have two BMP180s on two I2C buses simply by declaring two of these.
@@ -154,7 +152,7 @@ Uses the barometric formula to convert pressure to approximate altitude above se
 
 ## Understanding Error Handling
 
-Every function that can fail returns a `bmp180_status_t`. You should always check it:
+Every function that can fail returns a `bmp180_status_t`. Always check it:
 
 ```c
 bmp180_status_t s = bmp180_read_temperature(&sensor, &temp);
@@ -164,7 +162,7 @@ if (s != BMP180_OK) {
 }
 ```
 
-If you intentionally want to ignore a result (rare), cast it explicitly:
+If a result hsa to be intentionally ignored, cast it explicitly:
 ```c
 (void)bmp180_set_sea_level(&sensor, 1013.25f);  // set* functions rarely fail
 ```
@@ -173,18 +171,18 @@ If you intentionally want to ignore a result (rare), cast it explicitly:
 
 ## Calibrating Altitude
 
-The default sea level pressure (1013.25 hPa) changes with weather, so altitude readings drift by tens of metres from day to day. If you know your exact altitude (look it up from a map or GPS), you can calibrate the library:
+The default sea level pressure (1013.25 hPa) changes with weather, so altitude readings drift by tens of metres from day to day. If exact altitude is known,calibrate using:
 
 ```c
-float known_altitude_m = 721.0f;  // your true altitude in metres
+float known_altitude_m = 721.0f;  // true altitude in metres
 
 float pressure;
 bmp180_read_pressure(&sensor, &pressure);
 
-// Calculate what sea level pressure must be right now
+// Calculate sea level pressure at this instant
 float sea_level = bmp180_sea_level_from_altitude(pressure, known_altitude_m);
 
-// Set it — altitude readings will now be accurate
+// Set it
 bmp180_set_sea_level(&sensor, sea_level);
 
 printf("Calibrated sea level: %.2f hPa\n", sea_level);
@@ -196,7 +194,7 @@ After this, `bmp180_pressure_to_altitude()` will give accurate absolute readings
 
 ## The Async (Non-Blocking) API
 
-The blocking functions (`bmp180_read_all` etc.) pause your program for ~13-30ms while the sensor converts. For most uses this is fine. But if you're also driving a display, handling buttons, or running game logic, you don't want to stall.
+The blocking functions (`bmp180_read_all` etc.) pause the program for ~13-30ms while the sensor converts. For most uses this is fine. But if also driving a display, handling buttons, or running game logic, stalling is not favourable.
 
 The async API lets you start a measurement, do other work, then come back for the result:
 
@@ -204,7 +202,7 @@ The async API lets you start a measurement, do other work, then come back for th
 // Trigger temperature (returns immediately)
 bmp180_trigger_temperature(&sensor);
 
-// Do other work here — draw to display, check buttons, etc.
+// Do other work
 do_other_work();
 
 // Poll until ready
@@ -213,11 +211,11 @@ while (!ready) {
     bmp180_data_ready(&sensor, &ready);
 }
 
-// Fetch the result
+// Fetch result
 float temp;
 bmp180_fetch_temperature(&sensor, &temp);
 
-// Now trigger pressure (temperature must come first — always)
+// Trigger pressure
 bmp180_trigger_pressure(&sensor);
 
 do_other_work();
@@ -230,12 +228,12 @@ while (!ready) {
 float pressure;
 bmp180_fetch_pressure(&sensor, &pressure);
 ```
-
+Note that temperature **MUST** be called first before pressure.
 The `BMP180_ERR_SEQUENCE` error exists specifically for catching the mistake of triggering pressure before fetching temperature.
 
 ---
 
-## Oversampling Explained
+## Oversampling
 
 The BMP180 chip has a built-in hardware averaging feature for pressure. More samples means lower noise but slower readings:
 
@@ -252,7 +250,7 @@ Temperature is always measured at the same speed regardless of the OSS setting.
 
 ## Software Averaging
 
-You can also average multiple readings in software for even smoother output:
+For smoother output, the mean of multiple readings can be taken in software
 
 ```c
 float avg_pressure;
@@ -266,48 +264,45 @@ Note: samples must be between 1 and 64. Passing 0 or more than 64 returns `BMP18
 
 ## Weather Trend Detection (Advanced)
 
-After including `bmp180_advanced.h`, you can track weather trends:
+After including `bmp180_advanced.h`, weather trends can be tracked by:
 
 ```c
 #include "bmp180_advanced.h"
 
 bmp180_trend_tracker_t trend;
-bmp180_trend_init(&trend);   // must call this first — initialises internal critical section
-
-// Call this regularly — every 5 minutes is ideal
+bmp180_trend_init(&trend);   // initialises internal critical section
 float pressure;
 bmp180_read_pressure(&sensor, &pressure);
 bmp180_trend_update(&trend, pressure, time_us_32() / 1000);
 
-// Get the trend
 bmp180_trend_t t = bmp180_trend_get(&trend);
 printf("Weather: %s\n", bmp180_trend_str(t));
 
-// Or get the rate in hPa/hour
+// get the rate in hPa/hour
 float rate = bmp180_trend_rate(&trend);
 printf("Rate: %.3f hPa/hr\n", rate);
 ```
 
-The tracker uses **least-squares linear regression** over a 12-sample rolling window — more robust than just comparing the oldest and newest reading. All functions are thread-safe; you can call `bmp180_trend_update()` from one core and `bmp180_trend_get()` from the other without any external locking.
+The tracker uses **least-squares linear regression** over a 12-sample rolling window. All functions are thread-safe; you can call `bmp180_trend_update()` from one core and `bmp180_trend_get()` from the other without any external locking.
 
 ---
 
 ## Common Problems
 
 **"Chip not found" on init**
-- Check your wiring. VCC to 3V3, GND to GND, SDA and SCL to the correct pins.
+- Check wiring. VCC to 3V3, GND to GND, SDA and SCL to the correct pins.
 - Make sure SDA and SCL aren't swapped.
 - Run the I2C scanner from the main README to see if the chip responds at all.
-- Check you called `i2c_init()`, `gpio_set_function()`, and `gpio_pull_up()` before `bmp180_init()`.
+- Check these `i2c_init()`, `gpio_set_function()`, and `gpio_pull_up()` were called before before `bmp180_init()`.
 
 **Temperature reads 2-3°C too high**
-- Normal. The chip self-heats slightly. Leave it in open air away from other components.
+- The chip self-heats slightly. Leave it in open air away from other components for more accuracy.
 
 **Altitude varies by tens of metres between days**
-- Normal. Sea level pressure changes with weather. Calibrate with `bmp180_sea_level_from_altitude()` using today's known altitude.
+- This happens due to sea level pressure change with weather. Calibrate with `bmp180_sea_level_from_altitude()` using known altitude for that day.
 
 **Compilation error: `powf` undefined**
-- Add `m` to your `target_link_libraries` in CMakeLists.
+- Add `m` to `target_link_libraries` in CMakeLists.
 
 **`BMP180_ERR_SEQUENCE` from `bmp180_trigger_pressure`**
 - You must call and fetch temperature before triggering pressure. See the async API section above.
