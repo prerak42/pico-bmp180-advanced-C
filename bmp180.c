@@ -10,7 +10,7 @@
 #include "pico/error.h"
 #include "hardware/i2c.h"
 
-// ── Register map ──────────────────────────────────────────────────
+//Register map
 
 #define REG_ID          0xD0
 #define REG_SOFT_RESET  0xE0
@@ -32,29 +32,12 @@
 // OSS conversion wait times in ms (from datasheet table 7)
 static const uint8_t oss_wait_ms[] = {5, 8, 14, 26};
 
-// ── Locking helpers ───────────────────────────────────────────────
-//
-// Every public function that touches device state or the I2C bus
-// must call LOCK() on entry and UNLOCK() before every return.
-// Internal static helpers (reg_read, reg_write, compensate_*, etc.)
-// must NOT call LOCK — they are always called from within a lock.
-//
-// The averaging helpers hold the lock for their entire window so that
-// no other core can interleave a measurement mid-average. They call
-// the internal static helpers (read_raw_temp, read_raw_pressure,
-// compensate_*) directly rather than the public functions to avoid
-// re-entering the non-recursive mutex and deadlocking.
+//Locking helpers
 
 #define LOCK(dev)   mutex_enter_blocking(&(dev)->_mutex)
 #define UNLOCK(dev) mutex_exit(&(dev)->_mutex)
 
-// ── Internal I2C helpers ──────────────────────────────────────────
-//
-// Both helpers use the timeout variants of the Pico SDK I2C functions.
-// A hung bus (disconnected sensor, stuck SDA) will now return
-// BMP180_ERR_TIMEOUT rather than blocking forever.
-// Must be called with the mutex already held.
-
+//Internal I2C helpers
 static bmp180_status_t reg_write(bmp180_t *dev, uint8_t reg, uint8_t val) {
     uint8_t buf[2] = {reg, val};
     int result = i2c_write_timeout_us(dev->i2c, BMP180_I2C_ADDR,
@@ -80,13 +63,7 @@ static bmp180_status_t reg_read(bmp180_t *dev, uint8_t reg,
     return BMP180_OK;
 }
 
-// ── Calibration ───────────────────────────────────────────────────
-
-// The 11 BMP180 calibration coefficients are stored contiguously in EEPROM
-// starting at 0xAA. Rather than 11 separate I2C transactions (the original
-// approach), we do a single 22-byte burst read and decode in-place.
-// All values are big-endian (MSB first).
-// Must be called with the mutex already held.
+//Calibration
 static bmp180_status_t read_calibration(bmp180_t *dev) {
     uint8_t raw[CALIB_LEN];
     bmp180_status_t s = reg_read(dev, CALIB_BASE, raw, CALIB_LEN);
@@ -124,7 +101,7 @@ static bool calib_valid(const bmp180_calib_t *c) {
     return true;
 }
 
-// ── Raw ADC reads ─────────────────────────────────────────────────
+// Raw ADC reads
 // Must be called with the mutex already held.
 
 static bmp180_status_t read_raw_temp(bmp180_t *dev, int32_t *out) {
@@ -152,13 +129,7 @@ static bmp180_status_t read_raw_pressure(bmp180_t *dev, int32_t *out) {
     return BMP180_OK;
 }
 
-// ── Compensation (datasheet section 4.1.2) ───────────────────────
-//
-// B5 is an intermediate value shared between temperature and pressure
-// compensation. It is computed from UT (raw temperature) and reused
-// in both calculations, which is why temperature must be read before
-// pressure in every code path.
-
+// Compensation (datasheet section 4.1.2)
 static int32_t compute_B5(const bmp180_t *dev, int32_t UT) {
     int32_t X1 = ((UT - (int32_t)dev->calib.AC6)
                   * (int32_t)dev->calib.AC5) >> 15;
@@ -218,7 +189,7 @@ static bool compensate_pressure(const bmp180_t *dev, int32_t UT,
     return true;
 }
 
-// ── Public API — core ─────────────────────────────────────────────
+// Public API — core
 
 bmp180_status_t bmp180_init(bmp180_t *dev, i2c_inst_t *i2c, bmp180_oss_t oss) {
     // Initialise the mutex before anything else so that LOCK/UNLOCK
@@ -232,20 +203,14 @@ bmp180_status_t bmp180_init(bmp180_t *dev, i2c_inst_t *i2c, bmp180_oss_t oss) {
     dev->_temp_valid   = false;
     dev->_raw_temp     = 0;
     dev->_meas         = BMP180_MEAS_NONE;
-
-    // No other core can have a reference to this struct yet (it was
-    // just passed in uninitialised), so no lock is needed above.
-    // Lock from here to protect the I2C transactions.
     LOCK(dev);
 
-    // Verify chip identity — propagate I2C/timeout errors, only return
-    // NOT_FOUND when a device is present but returns the wrong chip ID.
+    // return NOT_FOUND when a device is present but returns the wrong chip ID.
     uint8_t id;
     bmp180_status_t s = reg_read(dev, REG_ID, &id, 1);
     if (s != BMP180_OK)        { UNLOCK(dev); return s; }
     if (id != BMP180_CHIP_ID)  { UNLOCK(dev); return BMP180_ERR_NOT_FOUND; }
 
-    // Read all 11 calibration coefficients in a single 22-byte burst
     s = read_calibration(dev);
     if (s != BMP180_OK)        { UNLOCK(dev); return s; }
 
@@ -333,7 +298,7 @@ bmp180_status_t bmp180_read_all(bmp180_t *dev,
     return s;
 }
 
-// ── Public API — async ────────────────────────────────────────────
+// Public API — async
 
 bmp180_status_t bmp180_trigger_temperature(bmp180_t *dev) {
     LOCK(dev);
@@ -348,9 +313,7 @@ bmp180_status_t bmp180_trigger_pressure(bmp180_t *dev) {
     LOCK(dev);
     if (!dev->initialised) { UNLOCK(dev); return BMP180_ERR_NOT_INIT; }
     bmp180_status_t s;
-    if (!dev->_temp_valid) {
-        // Cannot compensate pressure without a cached UT —
-        // this is a sequence violation, not an init failure
+    if (!dev->_temp_valid) { 
         s = BMP180_ERR_SEQUENCE;
     } else {
         s = reg_write(dev, REG_CTRL, CMD_PRESSURE(dev->oss));
@@ -418,13 +381,9 @@ bmp180_status_t bmp180_fetch_pressure(bmp180_t *dev, float *out) {
     return s;
 }
 
-// ── Altitude and conversion ───────────────────────────────────────
+// Altitude and conversion
 
 float bmp180_pressure_to_altitude(bmp180_t *dev, float pressure_hpa) {
-    // Standard barometric formula:
-    //   h = 44330 * (1 - (P / P0) ^ (1/5.255))
-    // BMP180_BARO_EXP = 1/5.255 so this is consistent with
-    // bmp180_sea_level_from_altitude which uses BMP180_BARO_POW = 5.255.
     LOCK(dev);
     float sea = dev->sea_level_hpa;
     UNLOCK(dev);
@@ -438,13 +397,8 @@ float bmp180_sea_level_from_altitude(float pressure_hpa, float altitude_m) {
                                 BMP180_BARO_POW);
 }
 
-// ── Averaging helpers ─────────────────────────────────────────────
-//
-// These call the internal static helpers (read_raw_temp,
-// read_raw_pressure, compensate_*) directly rather than the public
-// functions. This avoids re-entering the non-recursive mutex and
-// deadlocking. The lock is held for the full averaging window so
-// that no other core can interleave a measurement mid-average.
+// Averaging helpers
+
 
 bmp180_status_t bmp180_read_temperature_avg(bmp180_t *dev,
                                              uint8_t samples,
@@ -477,10 +431,6 @@ bmp180_status_t bmp180_read_pressure_avg(bmp180_t *dev,
     LOCK(dev);
     if (!dev->initialised) { UNLOCK(dev); return BMP180_ERR_NOT_INIT; }
 
-    // Read temperature ONCE. Pressure compensation only needs UT (raw
-    // temperature) to compute B5. Over a short averaging window temperature
-    // does not change meaningfully, so one measurement is sufficient and
-    // avoids N redundant temperature reads (the original code's flaw).
     int32_t UT;
     bmp180_status_t s = read_raw_temp(dev, &UT);
     if (s != BMP180_OK) { UNLOCK(dev); return s; }
@@ -506,12 +456,9 @@ bmp180_status_t bmp180_read_pressure_avg(bmp180_t *dev,
     return s;
 }
 
-// ── Debug helpers ─────────────────────────────────────────────────
+// Debug helpers
 
 void bmp180_dump_calibration(bmp180_t *dev) {
-    // Copy calibration data under the lock, then print outside it.
-    // This keeps the mutex held for the minimum time and avoids
-    // holding it across the slow printf calls.
     LOCK(dev);
     bmp180_calib_t c = dev->calib;
     UNLOCK(dev);
